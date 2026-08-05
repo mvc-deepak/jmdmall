@@ -5,43 +5,28 @@ const path = require('path');
 const medusaDir = path.join(__dirname, '..', '.medusa');
 const adminIndexPath = path.join(medusaDir, 'server', 'public', 'admin', 'index.html');
 
-// Check if admin build is complete (index.html must exist)
-const isBuildComplete = fs.existsSync(adminIndexPath);
+// Check if admin build is complete and has content
+let isBuildComplete = false;
+try {
+  if (fs.existsSync(adminIndexPath)) {
+    const stats = fs.statSync(adminIndexPath);
+    isBuildComplete = stats.size > 0;
+  }
+} catch (e) {
+  isBuildComplete = false;
+}
 
 if (!isBuildComplete) {
-  const debugInfo = [];
-  if (fs.existsSync(medusaDir)) {
-    debugInfo.push(`.medusa exists: ${fs.readdirSync(medusaDir).join(', ')}`);
-    const serverDir = path.join(medusaDir, 'server');
-    if (fs.existsSync(serverDir)) {
-      const publicDir = path.join(serverDir, 'public');
-      if (fs.existsSync(publicDir)) {
-        const adminDir = path.join(publicDir, 'admin');
-        if (fs.existsSync(adminDir)) {
-          debugInfo.push(`.medusa/server/public/admin exists with: ${fs.readdirSync(adminDir).slice(0, 5).join(', ')}`);
-        } else {
-          debugInfo.push('.medusa/server/public/admin does NOT exist');
-        }
-      } else {
-        debugInfo.push('.medusa/server/public does NOT exist');
-      }
-    } else {
-      debugInfo.push('.medusa/server does NOT exist');
-    }
-  } else {
-    debugInfo.push('.medusa directory does NOT exist');
-  }
-  console.log('[Startup] Admin build incomplete or missing.');
-  console.log('[Startup] Debug: ' + debugInfo.join(' | '));
-  console.log('[Startup] Running full medusa build...');
+  console.log('[Startup] Admin build missing or incomplete. Rebuilding...');
 
   try {
-    // Clean up incomplete build
+    // Always clean up and rebuild to ensure fresh build
     if (fs.existsSync(medusaDir)) {
       fs.rmSync(medusaDir, { recursive: true, force: true });
-      console.log('[Startup] Cleaned up incomplete .medusa directory.');
+      console.log('[Startup] Cleaned up .medusa directory.');
     }
 
+    console.log('[Startup] Running medusa build...');
     execSync('medusa build', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
     console.log('[Startup] Build completed successfully.');
   } catch (error) {
@@ -49,5 +34,5 @@ if (!isBuildComplete) {
     process.exit(1);
   }
 } else {
-  console.log('[Startup] Admin build complete. Starting server...');
+  console.log('[Startup] Admin build valid. Starting server...');
 }
