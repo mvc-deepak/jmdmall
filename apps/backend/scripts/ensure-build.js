@@ -3,8 +3,7 @@ const { execSync } = require('child_process');
 const path = require('path');
 
 const medusaDir = path.join(__dirname, '..', '.medusa');
-const adminClientDir = path.join(medusaDir, 'client');
-const adminIndexPath = path.join(adminClientDir, 'index.html');
+const adminIndexPath = path.join(medusaDir, 'server', 'public', 'admin', 'index.html');
 
 // Check if admin build is complete (index.html must exist)
 const isBuildComplete = fs.existsSync(adminIndexPath);
@@ -13,10 +12,21 @@ if (!isBuildComplete) {
   const debugInfo = [];
   if (fs.existsSync(medusaDir)) {
     debugInfo.push(`.medusa exists: ${fs.readdirSync(medusaDir).join(', ')}`);
-    if (fs.existsSync(adminClientDir)) {
-      debugInfo.push(`.medusa/client exists with: ${fs.readdirSync(adminClientDir).join(', ')}`);
+    const serverDir = path.join(medusaDir, 'server');
+    if (fs.existsSync(serverDir)) {
+      const publicDir = path.join(serverDir, 'public');
+      if (fs.existsSync(publicDir)) {
+        const adminDir = path.join(publicDir, 'admin');
+        if (fs.existsSync(adminDir)) {
+          debugInfo.push(`.medusa/server/public/admin exists with: ${fs.readdirSync(adminDir).slice(0, 5).join(', ')}`);
+        } else {
+          debugInfo.push('.medusa/server/public/admin does NOT exist');
+        }
+      } else {
+        debugInfo.push('.medusa/server/public does NOT exist');
+      }
     } else {
-      debugInfo.push('.medusa/client does NOT exist');
+      debugInfo.push('.medusa/server does NOT exist');
     }
   } else {
     debugInfo.push('.medusa directory does NOT exist');
