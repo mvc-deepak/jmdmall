@@ -1,13 +1,16 @@
+'use client'
+
 import { Text } from "@modules/common/components/ui"
 import { getProductPrice } from "@lib/util/get-product-price"
 import { HttpTypes } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import Thumbnail from "../thumbnail"
+import AddToCart from "../add-to-cart"
 
-export default async function ProductPreview({
+export default function ProductPreview({
   product,
   isFeatured,
-  region: _region,
+  region,
 }: {
   product: HttpTypes.StoreProduct
   isFeatured?: boolean
@@ -66,13 +69,28 @@ export default async function ProductPreview({
       ? `${product.variants.length} options`
       : undefined
 
+  // Calculate discount percentage
+  const calculateDiscount = () => {
+    if (!cheapestPrice) return null
+
+    const sellingPrice = cheapestPrice.calculated_price_number || 0
+    const mrpPrice = cheapestPrice.original_price_number || 0
+
+    if (mrpPrice <= sellingPrice) return null
+
+    const discountPercentage = Math.round(((mrpPrice - sellingPrice) / mrpPrice) * 100)
+    return discountPercentage > 0 ? discountPercentage : null
+  }
+
+  const discount = calculateDiscount()
+
   return (
     <LocalizedClientLink
       href={`/products/${product.handle}`}
       className="group block w-full"
     >
       <article className="flex h-full flex-col overflow-hidden rounded-[12px] border border-ui-border-base bg-white shadow-sm transition duration-150 ease-out hover:shadow-sm">
-        <div className="overflow-hidden bg-[#faf8ef]">
+        <div className="overflow-hidden bg-[#faf8ef] relative">
           <Thumbnail
             thumbnail={product.thumbnail}
             images={product.images}
@@ -80,6 +98,11 @@ export default async function ProductPreview({
             isFeatured={isFeatured}
             className="bg-[#faf8ef] !h-[180px] !p-1"
           />
+          {discount && (
+            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-bold">
+              {discount}% OFF
+            </div>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col gap-2 px-3 py-2">
@@ -101,19 +124,29 @@ export default async function ProductPreview({
             </Text>
           )}
 
-          <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-            <Text className="text-[15px] font-medium text-ui-fg-base">
-              {cheapestPrice?.calculated_price}
-            </Text>
-            <div className="flex flex-col items-end gap-1">
-              <span className="inline-flex h-[38px] min-w-[86px] items-center justify-center rounded-[8px] border border-emerald-500 bg-white px-3 text-[13px] font-medium text-emerald-700">
-                ADD
-              </span>
-              {variantCountLabel && (
-                <Text className="text-[11px] text-ui-fg-muted">
-                  {variantCountLabel}
+          <div className="mt-auto flex flex-col gap-1 pt-2">
+            {/* Price Row */}
+            <div className="flex items-center gap-2">
+              <Text className="text-[15px] font-bold text-emerald-600">
+                {cheapestPrice?.calculated_price || "Price unavailable"}
+              </Text>
+              {cheapestPrice?.original_price && cheapestPrice.original_price !== cheapestPrice.calculated_price && (
+                <Text className="text-[12px] text-gray-400 line-through">
+                  {cheapestPrice.original_price}
                 </Text>
               )}
+            </div>
+
+            {/* Variant Count Label */}
+            {variantCountLabel && (
+              <Text className="text-[11px] text-ui-fg-muted">
+                {variantCountLabel}
+              </Text>
+            )}
+
+            {/* Add to Cart Button */}
+            <div className="flex justify-end pt-1" onClick={(e) => e.stopPropagation()}>
+              <AddToCart product={product} regionId={region.id} />
             </div>
           </div>
         </div>

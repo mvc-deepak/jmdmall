@@ -2,7 +2,6 @@ import { HttpTypes } from "@medusajs/types"
 import Image from "next/image"
 
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
-import { Heading, Text } from "@modules/common/components/ui"
 import PlaceholderImage from "@modules/common/icons/placeholder-image"
 
 const getCategoryImage = (category: HttpTypes.StoreProductCategory) => {
@@ -49,50 +48,45 @@ export default function MainCategories({
   const topLevelCategories = categories.filter((category) => !category.parent_category)
 
   return (
-    <section className="py-8">
-      <Heading
-        level="h2"
-        className="text-[28px] font-semibold text-ui-fg-base mb-6"
-      >
-        Categories
-      </Heading>
+    <section className="py-6 w-full">
+      <div className="px-6 mx-auto flex flex-col gap-y-3">
+        <span className="txt-small-plus txt-ui-fg-base px-0">
+          Categories
+        </span>
+        <ul className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 text-ui-fg-subtle txt-small">
+          {topLevelCategories.map((category) => {
+            const image = getCategoryImage(category)
 
-      <ul className="grid grid-cols-3 gap-x-1 gap-y-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12">
-        {topLevelCategories.map((category) => {
-          const image = getCategoryImage(category)
-
-          return (
-            <li key={category.id} className="list-none justify-self-center">
-              <LocalizedClientLink
-                href={`/categories/${category.handle}`}
-                className="group flex flex-col items-center text-center gap-[5px] transition duration-200 hover:text-ui-fg-interactive"
-              >
-                <div className="relative aspect-[4/5] w-[64px] overflow-hidden rounded-[10px] border border-ui-border-base/10 bg-ui-bg-subtle transition-colors duration-200 group-hover:bg-ui-bg-muted">
-                  {image ? (
-                    <Image
-                      src={image}
-                      alt={category.name || "Category"}
-                      fill
-                      className="object-cover object-center transition-transform duration-200 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-ui-fg-subtle">
-                      <PlaceholderImage size={20} />
-                    </div>
-                  )}
-                </div>
-
-                <Text
-                  as="span"
-                  className="text-[12px] font-normal leading-[1.35] text-ui-fg-base max-w-[78px] break-normal overflow-visible hyphens-none"
+            return (
+              <li key={category.id} className="list-none">
+                <LocalizedClientLink
+                  href={`/categories/${category.handle}`}
+                  className="group flex flex-col items-center text-center gap-2 transition duration-200"
                 >
-                  {category.name}
-                </Text>
-              </LocalizedClientLink>
-            </li>
-          )
-        })}
-      </ul>
+                  <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-ui-border-base/10 bg-ui-bg-subtle transition-colors duration-200 group-hover:bg-ui-bg-muted">
+                    {image ? (
+                      <Image
+                        src={image}
+                        alt={category.name || "Category"}
+                        fill
+                        className="object-cover object-center transition-transform duration-200 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-ui-fg-subtle">
+                        <PlaceholderImage size={24} />
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="txt-small text-ui-fg-base max-w-full line-clamp-2 text-center hover:text-ui-fg-base">
+                    {category.name}
+                  </span>
+                </LocalizedClientLink>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
     </section>
   )
 }
