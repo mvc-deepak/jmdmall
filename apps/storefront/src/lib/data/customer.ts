@@ -130,8 +130,16 @@ export async function login(
 ): Promise<CustomerAuthState> {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
+  const countryCode = (formData.get("countryCode") as string) || "us"
 
-  return completeLogin(email, password)
+  const result = await completeLogin(email, password)
+
+  if (result?.state === "success") {
+    // Return success state and let client redirect
+    return { state: "success" }
+  }
+
+  return result
 }
 
 // Logs the customer in and reconciles the customer record. The behavior is

@@ -1,7 +1,7 @@
 import { Metadata } from "next"
 
+import HomeBanner from "@modules/home/components/home-banner"
 import FeaturedProducts from "@modules/home/components/featured-products"
-import Hero from "@modules/home/components/hero"
 import MainCategories from "@modules/home/components/main-categories"
 import CategoryProducts from "@modules/home/components/category-products"
 import { listCollections } from "@lib/data/collections"
@@ -41,7 +41,7 @@ export default async function Home(props: {
 
   return (
     <>
-      <Hero />
+      <HomeBanner />
       <MainCategories categories={categories || []} />
       <CategoryProducts region={region} />
       <div className="content-container py-12">
