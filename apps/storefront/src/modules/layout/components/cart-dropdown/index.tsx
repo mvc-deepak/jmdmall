@@ -5,6 +5,7 @@ import { HttpTypes } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import { usePathname } from "next/navigation"
 import { Fragment, useEffect, useRef, useState } from "react"
+import { useCart } from '@lib/hooks/useCart'
 
 interface LocalCart {
   items: Array<{
@@ -24,55 +25,15 @@ const CartDropdown = ({
 }: {
   cart?: HttpTypes.StoreCart | null
 }) => {
-  const [localCart, setLocalCart] = useState<LocalCart | null>(null)
   const [isMounted, setIsMounted] = useState(false)
+  const { cart: storedCart } = useCart()
 
-  const cart = localCart || cartState
-  const totalItems = cart?.items?.reduce((acc, item) => {
-    return acc + item.quantity
-  }, 0) || 0
-
+  const cart = storedCart || cartState
+  const totalItems = cart?.items?.reduce((acc, item) => acc + item.quantity, 0) || 0
   const subtotal = cart?.total ?? 0
 
-  // Load cart from localStorage on mount
   useEffect(() => {
     setIsMounted(true)
-    const cartData = localStorage.getItem("medusa_cart")
-    if (cartData) {
-      try {
-        const parsed = JSON.parse(cartData)
-        setLocalCart(parsed)
-      } catch (e) {
-        console.error("Failed to parse cart from localStorage", e)
-      }
-    }
-
-    // Listen for custom cart update events (same tab)
-    const handleCartUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent
-      const updatedCart = customEvent.detail
-      setLocalCart(updatedCart)
-    }
-
-    // Listen for storage changes (for multi-tab sync)
-    const handleStorageChange = () => {
-      const updatedCartData = localStorage.getItem("medusa_cart")
-      if (updatedCartData) {
-        try {
-          const parsed = JSON.parse(updatedCartData)
-          setLocalCart(parsed)
-        } catch (e) {
-          console.error("Failed to parse cart from localStorage", e)
-        }
-      }
-    }
-
-    window.addEventListener("cartUpdated", handleCartUpdate)
-    window.addEventListener("storage", handleStorageChange)
-    return () => {
-      window.removeEventListener("cartUpdated", handleCartUpdate)
-      window.removeEventListener("storage", handleStorageChange)
-    }
   }, [])
 
   if (!isMounted) {

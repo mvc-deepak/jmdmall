@@ -6,6 +6,7 @@ import { HttpTypes } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import Thumbnail from "../thumbnail"
 import AddToCart from "../add-to-cart"
+import WishlistButton from "@modules/wishlist/components/wishlist-button"
 
 export default function ProductPreview({
   product,
@@ -90,7 +91,7 @@ export default function ProductPreview({
       className="group block w-full"
     >
       <article className="flex h-full flex-col overflow-hidden rounded-[12px] border border-ui-border-base bg-white shadow-sm transition duration-150 ease-out hover:shadow-sm">
-        <div className="overflow-hidden bg-[#faf8ef] relative">
+        <div className="relative overflow-hidden bg-[#faf8ef]">
           <Thumbnail
             thumbnail={product.thumbnail}
             images={product.images}
@@ -98,8 +99,11 @@ export default function ProductPreview({
             isFeatured={isFeatured}
             className="bg-[#faf8ef] !h-[180px] !p-1"
           />
+          <div className="absolute right-2 top-2 z-10">
+            <WishlistButton product={product} size="sm" />
+          </div>
           {discount && (
-            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-bold">
+            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-bold">
               {discount}% OFF
             </div>
           )}
@@ -146,7 +150,7 @@ export default function ProductPreview({
 
             {/* Add to Cart Button */}
             <div className="flex justify-end pt-1" onClick={(e) => e.stopPropagation()}>
-              <AddToCart product={product} regionId={region.id} />
+              <AddToCart product={product} />
             </div>
           </div>
         </div>

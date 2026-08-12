@@ -104,6 +104,22 @@ export const CartIcon = ({ size = 24 }) => (
   </svg>
 );
 
+export const HeartIcon = ({ size = 24 }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width={size}
+    height={size}
+    aria-hidden="true"
+  >
+    <path d="M12 21s-7.5-4.35-10.5-9.35C.52 9.7 2.05 5 6.1 5c2.18 0 3.42 1.13 4.12 2.2C10.92 6.13 12.16 5 14.34 5c4.05 0 5.58 4.7 4.6 6.65C19.5 16.65 12 21 12 21Z" />
+  </svg>
+);
+
 export const OfferDot = () => (
   <svg
     viewBox="0 0 8 8"

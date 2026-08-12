@@ -6,14 +6,12 @@ import { HttpTypes } from '@medusajs/types'
 
 interface ProductDetailActionsProps {
   product: HttpTypes.StoreProduct
-  regionId: string
 }
 
 export default function ProductDetailActions({
   product,
-  regionId,
 }: ProductDetailActionsProps) {
-  const { cart, addItem, updateQuantity } = useCart(regionId)
+  const { cart, addItem, updateQuantity } = useCart()
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
 
@@ -43,6 +41,7 @@ export default function ProductDetailActions({
   const handleAddToCart = async () => {
     if (quantity === 0) {
       await addItem(product.id, selectedVariantId, 1, {
+        product_handle: product.handle,
         title: product.title,
         sku: selectedVariant.sku,
         price: sellingPrice,
@@ -112,6 +111,34 @@ export default function ProductDetailActions({
         </div>
       )}
 
+      {/* Quantity Controls / Add to Cart */}
+      <div className="mb-6">
+        {quantity === 0 ? (
+          <button
+            onClick={handleAddToCart}
+            className="w-full bg-emerald-600 text-white py-3 rounded-lg hover:bg-emerald-700 transition-colors font-medium"
+          >
+            Add to Cart
+          </button>
+        ) : (
+          <div className="flex items-center justify-between border border-gray-300 rounded-lg p-3">
+            <button
+              onClick={() => handleQuantityChange(quantity - 1)}
+              className="w-8 h-8 flex items-center justify-center text-lg font-medium text-gray-700 hover:bg-gray-100 rounded"
+            >
+              −
+            </button>
+            <span className="text-lg font-bold text-gray-900">{quantity}</span>
+            <button
+              onClick={() => handleQuantityChange(quantity + 1)}
+              className="w-8 h-8 flex items-center justify-center text-lg font-medium text-gray-700 hover:bg-gray-100 rounded"
+            >
+              +
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Selected Variant Details */}
       <div className="mb-6 pb-6 border-b border-gray-200">
         {selectedVariant.title && selectedVariant.title !== 'Default Title' && (
@@ -138,34 +165,6 @@ export default function ProductDetailActions({
         <div className="text-xs text-gray-500">
           (Inclusive of all taxes)
         </div>
-      </div>
-
-      {/* Quantity Controls */}
-      <div className="mb-6">
-        {quantity === 0 ? (
-          <button
-            onClick={handleAddToCart}
-            className="w-full bg-emerald-600 text-white py-3 rounded-lg hover:bg-emerald-700 transition-colors font-medium"
-          >
-            Add to Cart
-          </button>
-        ) : (
-          <div className="flex items-center justify-between border border-gray-300 rounded-lg p-3">
-            <button
-              onClick={() => handleQuantityChange(quantity - 1)}
-              className="w-8 h-8 flex items-center justify-center text-lg font-medium text-gray-700 hover:bg-gray-100 rounded"
-            >
-              −
-            </button>
-            <span className="text-lg font-bold text-gray-900">{quantity}</span>
-            <button
-              onClick={() => handleQuantityChange(quantity + 1)}
-              className="w-8 h-8 flex items-center justify-center text-lg font-medium text-gray-700 hover:bg-gray-100 rounded"
-            >
-              +
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Info */}

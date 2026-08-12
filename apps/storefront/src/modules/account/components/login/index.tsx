@@ -4,7 +4,7 @@ import ErrorMessage from "@modules/checkout/components/error-message"
 import { SubmitButton } from "@modules/checkout/components/submit-button"
 import Input from "@modules/common/components/input"
 import { useActionState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 type Props = {
   setCurrentView: (view: LOGIN_VIEW) => void
@@ -13,6 +13,8 @@ type Props = {
 
 const Login = ({ setCurrentView, countryCode }: Props) => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnTo = searchParams.get("returnTo") || `/${countryCode}/account`
 
   const loginAction = async (state: unknown, formData: FormData) => {
     if (countryCode) {
@@ -25,10 +27,9 @@ const Login = ({ setCurrentView, countryCode }: Props) => {
 
   useEffect(() => {
     if (message?.state === "success") {
-      // Redirect to account page
-      router.push(`/${countryCode}/account`)
+      router.push(returnTo)
     }
-  }, [message, countryCode, router])
+  }, [message, returnTo, router])
 
   return (
     <div

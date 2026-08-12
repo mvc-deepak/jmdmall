@@ -12,11 +12,13 @@ const StoreTemplate = ({
   page,
   countryCode,
   optionValueIds,
+  searchQuery,
 }: {
   sortBy?: SortOptions
   page?: string
   countryCode: string
   optionValueIds?: OptionValueIds
+  searchQuery?: string
 }) => {
   const pageNumber = page ? parseInt(page) : 1
   const sort = sortBy || "created_at"
@@ -24,7 +26,9 @@ const StoreTemplate = ({
   return (
     <div className="w-full max-w-full px-6 py-6" data-testid="category-container">
       <div className="mb-8 text-2xl-semi">
-        <h1 data-testid="store-page-title">All products</h1>
+        <h1 data-testid="store-page-title">
+          {searchQuery ? `Search results for "${searchQuery}"` : "All products"}
+        </h1>
       </div>
       <RefinementList sortBy={sort} />
       <Suspense fallback={<SkeletonProductGrid />}>
@@ -33,6 +37,7 @@ const StoreTemplate = ({
           page={pageNumber}
           countryCode={countryCode}
           optionValueIds={optionValueIds}
+          searchQuery={searchQuery}
         />
       </Suspense>
     </div>

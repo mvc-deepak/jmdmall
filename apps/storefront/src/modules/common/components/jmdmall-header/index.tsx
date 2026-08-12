@@ -15,6 +15,7 @@ import {
 } from "./header-config";
 import JMDMALLCartServer from "./jmdmall-cart-server";
 import JMDMALLHeaderClient from "./jmdmall-header-client";
+import JMDMALLWishlist from "./jmdmall-wishlist";
 import { retrieveCustomer } from "@lib/data/customer";
 
 interface JMDMALLHeaderProps {
@@ -83,6 +84,8 @@ export default async function JMDMALLHeader({
               )}
             </div>
           </Link>
+
+          <JMDMALLWishlist />
 
           {/* Cart Button - JMDMALL Blinkit-Style */}
           <JMDMALLCartServer />

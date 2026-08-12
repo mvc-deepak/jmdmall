@@ -6,7 +6,6 @@ import { HttpTypes } from '@medusajs/types'
 
 interface AddToCartProps {
   product: HttpTypes.StoreProduct
-  regionId: string
   onAddSuccess?: () => void
 }
 
@@ -17,47 +16,21 @@ interface CartItem {
 
 export default function AddToCart({
   product,
-  regionId,
   onAddSuccess,
 }: AddToCartProps) {
-  const { cart, addItem, updateQuantity, isLoading } = useCart(regionId)
+  const { cart, addItem, updateQuantity, isLoading } = useCart()
   const [quantity, setQuantity] = useState(0)
   const [isMounted, setIsMounted] = useState(false)
 
   const variant = product.variants?.[0]
   if (!variant) return null
 
-  // Initialize quantity from localStorage on mount
+  // Initialize quantity from cart hook on mount and update when cart changes
   useEffect(() => {
     setIsMounted(true)
-    const cartData = localStorage.getItem('medusa_cart')
-    if (cartData) {
-      try {
-        const parsed = JSON.parse(cartData)
-        const cartItem = parsed.items?.find(
-          (item: CartItem) => item.variant_id === variant.id
-        )
-        if (cartItem) {
-          setQuantity(cartItem.quantity)
-        }
-      } catch (e) {
-        console.error('Failed to parse cart from localStorage', e)
-      }
-    }
-
-    // Listen for cart updates
-    const handleCartUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent
-      const updatedCart = customEvent.detail
-      const cartItem = updatedCart.items?.find(
-        (item: CartItem) => item.variant_id === variant.id
-      )
-      setQuantity(cartItem?.quantity || 0)
-    }
-
-    window.addEventListener('cartUpdated', handleCartUpdate)
-    return () => window.removeEventListener('cartUpdated', handleCartUpdate)
-  }, [variant.id])
+    const cartItem = cart?.items?.find((item: CartItem) => item.variant_id === variant.id)
+    setQuantity(cartItem?.quantity || 0)
+  }, [cart, variant.id])
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -65,18 +38,17 @@ export default function AddToCart({
 
     if (!variant) return
 
-    await addItem(
-      product.id,
-      variant.id,
-      1,
-      {
-        title: product.title,
-        sku: variant.sku,
-        price: variant.calculated_price?.calculated_amount || 0,
-        image: product.thumbnail,
-        variant_title: variant.title && variant.title !== "Default Title" ? variant.title : undefined,
-      }
-    )
+    await addItem({
+      product_id: product.id,
+      product_handle: product.handle,
+      variant_id: variant.id,
+      quantity: 1,
+      title: product.title,
+      sku: variant.sku,
+      price: variant.calculated_price?.calculated_amount || 0,
+      image: product.thumbnail,
+      variant_title: variant.title && variant.title !== "Default Title" ? variant.title : undefined,
+    })
 
     onAddSuccess?.()
   }

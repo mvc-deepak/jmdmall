@@ -1,8 +1,7 @@
 import { listProducts } from "@lib/data/products"
 import { listCategories } from "@lib/data/categories"
 import { HttpTypes } from "@medusajs/types"
-import LocalizedClientLink from "@modules/common/components/localized-client-link"
-import ProductPreview from "@modules/products/components/product-preview"
+import CategoryCarousel from "./category-carousel"
 
 export default async function CategoryProducts({
   region,
@@ -32,22 +31,13 @@ export default async function CategoryProducts({
           queryParams: {
             category_id: category.id,
             fields: "*variants.calculated_price,+variants.inventory_quantity,*variants.images,*variants.options,+metadata,+tags,",
+            limit: 20,
           },
         })
 
-        console.log(`\n=== Category: ${category.name} ===`)
-        console.log(`Region ID: ${region.id}`)
-        console.log(`Products Count: ${pricedProducts?.length || 0}`)
-
-        if (pricedProducts && pricedProducts.length > 0) {
-          const firstProduct = pricedProducts[0]
-          console.log(`First product: ${firstProduct.title}`)
-          console.log(`First product variants:`, JSON.stringify(firstProduct.variants?.slice(0, 1), null, 2))
-        }
-
         return {
           category,
-          products: (pricedProducts || []).slice(0, 12),
+          products: (pricedProducts || []).slice(0, 20),
         }
       } catch (error) {
         console.error(`Error fetching products for category ${category.name}:`, error)
@@ -67,39 +57,12 @@ export default async function CategoryProducts({
         }
 
         return (
-          <div key={category.id} className="py-8 border-b">
-            <div className="content-container">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-ui-fg-base">
-                  {category.name}
-                </h2>
-                <LocalizedClientLink
-                  href={`/categories/${category.handle}`}
-                  className="text-sm text-ui-fg-subtle hover:text-ui-fg-base transition-colors"
-                >
-                  View all →
-                </LocalizedClientLink>
-              </div>
-
-              <div className="overflow-x-auto pb-4">
-                <div className="flex gap-4" style={{ minWidth: "max-content" }}>
-                  {products.map((product) => (
-                    <div
-                      key={product.id}
-                      className="flex-shrink-0"
-                      style={{ width: "calc((100vw - 48px) / 6.5)" }}
-                    >
-                      <ProductPreview
-                        product={product}
-                        region={region}
-                        isFeatured={false}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <CategoryCarousel
+            key={category.id}
+            category={category}
+            products={products}
+            region={region}
+          />
         )
       })}
     </div>

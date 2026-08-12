@@ -59,7 +59,9 @@ export const FeaturesBanner = ({ config }: FeaturesBannerProps) => {
               {getFeatureIcon(feature.icon)}
             </div>
             <div className="feature-item-title">{feature.title}</div>
-            <div className="feature-item-subtitle">{feature.description}</div>
+            {feature.description ? (
+              <div className="feature-item-subtitle">{feature.description}</div>
+            ) : null}
           </div>
         ))}
       </div>

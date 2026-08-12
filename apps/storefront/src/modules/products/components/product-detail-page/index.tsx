@@ -18,7 +18,7 @@ export default function ProductDetailPage({
   region,
   images,
 }: ProductDetailPageProps) {
-  const { cart, addItem, updateQuantity } = useCart(region.id)
+  const { cart, addItem, updateQuantity } = useCart()
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isMounted, setIsMounted] = useState(false)
@@ -50,6 +50,7 @@ export default function ProductDetailPage({
   const handleAddToCart = async () => {
     if (quantity === 0) {
       await addItem(product.id, selectedVariantId, 1, {
+        product_handle: product.handle,
         title: product.title,
         sku: selectedVariant.sku,
         price: sellingPrice,
