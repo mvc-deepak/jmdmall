@@ -1,10 +1,10 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { AuthService } from "@medusajs/medusa/auth"
+import { IAuthModuleService } from "@medusajs/types"
 
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
-  const authService = req.scope.resolve("auth")
+  const authService: IAuthModuleService = req.scope.resolve("auth")
 
-  const { email, password } = req.body
+  const { email, password } = req.body as { email: string; password: string }
 
   if (!email || !password) {
     res.status(400).json({ message: "Email and password are required" })
