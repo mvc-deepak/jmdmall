@@ -13,6 +13,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
 
   try {
     const result = await authService.authenticate("emailpass", {
+      url: req.url,
+      headers: req.headers as Record<string, string>,
       body: {
         email,
         password,
@@ -21,6 +23,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
 
     res.json(result)
   } catch (error) {
+    console.error("Authentication error:", error)
     res.status(401).json({ message: "Invalid credentials" })
   }
 }
