@@ -12,7 +12,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
 
   try {
-    const result = await authService.authenticate("customer", {
+    const result = await authService.authenticate("emailpass", {
       email,
       password,
     })
