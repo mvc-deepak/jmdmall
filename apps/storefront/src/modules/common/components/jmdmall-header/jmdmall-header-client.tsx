@@ -40,8 +40,8 @@ export default function JMDMALLHeaderClient({
 
   const currentCountryCode =
     typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "us"
-      : "us"
+      ? window.location.pathname.split("/")[1] || process.env.NEXT_PUBLIC_DEFAULT_REGION || "in"
+      : process.env.NEXT_PUBLIC_DEFAULT_REGION || "in"
 
   const fetchResults = useCallback(async (query: string) => {
     const normalizedQuery = query?.trim() || ""

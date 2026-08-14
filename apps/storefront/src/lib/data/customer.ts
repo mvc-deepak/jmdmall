@@ -174,7 +174,7 @@ export async function login(
 ): Promise<CustomerAuthState> {
   const email = getFormDataValue(formData, "email")
   const password = getFormDataValue(formData, "password")
-  const countryCode = getFormDataValue(formData, "countryCode") || "us"
+  const countryCode = getFormDataValue(formData, "countryCode") || process.env.NEXT_PUBLIC_DEFAULT_REGION || "in"
 
   const result = await completeLogin(email, password)
 

@@ -24,7 +24,7 @@ type SearchDropdownProps = {
 export default function SearchDropdown({
   results,
   query,
-  countryCode = "us",
+  countryCode = process.env.NEXT_PUBLIC_DEFAULT_REGION || "in",
   isOpen,
   onClose,
 }: SearchDropdownProps) {
