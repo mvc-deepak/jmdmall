@@ -35,7 +35,7 @@ export default async function initial_data_seed({
     ModuleRegistrationName.FULFILLMENT
   );
 
-  const countries = ["gb", "de", "dk", "se", "fr", "es", "it"];
+  const countries = ["in"];
 
   logger.info("Seeding store data...");
   const {
@@ -81,12 +81,8 @@ export default async function initial_data_seed({
           name: "Default Store",
           supported_currencies: [
             {
-              currency_code: "eur",
+              currency_code: "inr",
               is_default: true,
-            },
-            {
-              currency_code: "usd",
-              is_default: false,
             },
           ],
           default_sales_channel_id: defaultSalesChannel.id,
@@ -100,8 +96,8 @@ export default async function initial_data_seed({
     input: {
       regions: [
         {
-          name: "Europe",
-          currency_code: "eur",
+          name: "Global",
+          currency_code: "inr",
           countries,
           payment_providers: ["pp_system_default"],
         },
@@ -220,16 +216,8 @@ export default async function initial_data_seed({
         },
         prices: [
           {
-            currency_code: "usd",
-            amount: 10,
-          },
-          {
-            currency_code: "eur",
-            amount: 10,
-          },
-          {
-            region_id: region.id,
-            amount: 10,
+            currency_code: "inr",
+            amount: 500,
           },
         ],
         rules: [
@@ -258,16 +246,8 @@ export default async function initial_data_seed({
         },
         prices: [
           {
-            currency_code: "usd",
-            amount: 10,
-          },
-          {
-            currency_code: "eur",
-            amount: 10,
-          },
-          {
-            region_id: region.id,
-            amount: 10,
+            currency_code: "inr",
+            amount: 500,
           },
         ],
         rules: [
@@ -318,6 +298,18 @@ export default async function initial_data_seed({
           name: "Merch",
           is_active: true,
         },
+        {
+          name: "Vegetables",
+          is_active: true,
+        },
+        {
+          name: "Fruits",
+          is_active: true,
+        },
+        {
+          name: "Dairy",
+          is_active: true,
+        },
       ],
     },
   });
@@ -335,11 +327,16 @@ export default async function initial_data_seed({
           title: "Color",
           values: ["Black", "White"],
         },
+        {
+          title: "Quantity",
+          values: ["500g", "1kg", "2kg"],
+        },
       ],
     },
   });
   const sizeOption = productOptionsResult.find((o) => o.title === "Size")!;
   const colorOption = productOptionsResult.find((o) => o.title === "Color")!;
+  const quantityOption = productOptionsResult.find((o) => o.title === "Quantity")!;
 
   await createProductsWorkflow(container).run({
     input: {
@@ -355,6 +352,9 @@ export default async function initial_data_seed({
           weight: 400,
           status: ProductStatus.PUBLISHED,
           shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 1000,
+          },
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
@@ -383,12 +383,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -401,12 +397,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -419,12 +411,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -437,12 +425,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -455,12 +439,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -473,12 +453,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -491,12 +467,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -509,12 +481,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 800,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -536,6 +504,9 @@ export default async function initial_data_seed({
           weight: 400,
           status: ProductStatus.PUBLISHED,
           shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 1500,
+          },
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatshirt-vintage-front.png",
@@ -554,12 +525,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 1200,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -571,12 +538,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 1200,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -588,12 +551,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 1200,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -605,12 +564,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 1200,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -632,6 +587,9 @@ export default async function initial_data_seed({
           weight: 400,
           status: ProductStatus.PUBLISHED,
           shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 1200,
+          },
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatpants-gray-front.png",
@@ -650,12 +608,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 900,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -667,12 +621,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 900,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -684,12 +634,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 900,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -701,12 +647,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 900,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -728,6 +670,9 @@ export default async function initial_data_seed({
           weight: 400,
           status: ProductStatus.PUBLISHED,
           shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 800,
+          },
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/shorts-vintage-front.png",
@@ -746,12 +691,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 599,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -763,12 +704,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 599,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -780,12 +717,8 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 599,
+                  currency_code: "inr",
                 },
               ],
             },
@@ -797,12 +730,416 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
-                  currency_code: "eur",
+                  amount: 599,
+                  currency_code: "inr",
                 },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "Fresh Tomatoes",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Vegetables")!.id,
+          ],
+          description: "Fresh, juicy tomatoes picked fresh from the farm. Perfect for salads, curries, and cooking.",
+          handle: "fresh-tomatoes",
+          weight: 500,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 80,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "500g",
+              sku: "TOMATO-500G",
+              options: {
+                Quantity: "500g",
+              },
+              prices: [
                 {
-                  amount: 15,
-                  currency_code: "usd",
+                  amount: 60,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "1kg",
+              sku: "TOMATO-1KG",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 120,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2kg",
+              sku: "TOMATO-2KG",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 220,
+                  currency_code: "inr",
+                },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "Fresh Bananas",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Fruits")!.id,
+          ],
+          description: "Ripe, sweet bananas loaded with potassium. Great for breakfast and healthy snacks.",
+          handle: "fresh-bananas",
+          weight: 500,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 100,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "500g",
+              sku: "BANANA-500G",
+              options: {
+                Quantity: "500g",
+              },
+              prices: [
+                {
+                  amount: 70,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "1kg",
+              sku: "BANANA-1KG",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 130,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2kg",
+              sku: "BANANA-2KG",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 250,
+                  currency_code: "inr",
+                },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "Whole Milk",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Dairy")!.id,
+          ],
+          description: "Pure, fresh whole milk. Rich in calcium and nutrients for the entire family.",
+          handle: "whole-milk",
+          weight: 1000,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 150,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "500ml",
+              sku: "MILK-500ML",
+              options: {
+                Quantity: "500g",
+              },
+              prices: [
+                {
+                  amount: 99,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "1 Liter",
+              sku: "MILK-1L",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 180,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2 Liter",
+              sku: "MILK-2L",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 350,
+                  currency_code: "inr",
+                },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "Basmati Rice Premium",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Vegetables")!.id,
+          ],
+          description: "Long grain basmati rice, aged for perfect texture and aroma. Ideal for biryanis and pulao.",
+          handle: "basmati-rice-premium",
+          weight: 2000,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 500,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "1kg",
+              sku: "RICE-BASMATI-1KG",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 380,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2kg",
+              sku: "RICE-BASMATI-2KG",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 740,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "5kg",
+              sku: "RICE-BASMATI-5KG",
+              options: {
+                Quantity: "5kg",
+              },
+              prices: [
+                {
+                  amount: 1799,
+                  currency_code: "inr",
+                },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "White Rice Regular",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Vegetables")!.id,
+          ],
+          description: "Regular white rice, versatile for everyday cooking. Good quality and affordable.",
+          handle: "white-rice-regular",
+          weight: 2000,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 200,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "1kg",
+              sku: "RICE-WHITE-1KG",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 140,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2kg",
+              sku: "RICE-WHITE-2KG",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 270,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "5kg",
+              sku: "RICE-WHITE-5KG",
+              options: {
+                Quantity: "5kg",
+              },
+              prices: [
+                {
+                  amount: 650,
+                  currency_code: "inr",
+                },
+              ],
+            },
+          ],
+          sales_channels: [
+            {
+              id: defaultSalesChannel.id,
+            },
+          ],
+        },
+        {
+          title: "Brown Rice Organic",
+          category_ids: [
+            categoryResult.find((cat) => cat.name === "Vegetables")!.id,
+          ],
+          description: "Organic brown rice with natural bran, rich in fiber and nutrients. Perfect for healthy eating.",
+          handle: "brown-rice-organic",
+          weight: 2000,
+          status: ProductStatus.PUBLISHED,
+          shipping_profile_id: shippingProfile.id,
+          metadata: {
+            mrp: 300,
+          },
+          images: [
+            {
+              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
+            },
+          ],
+          options: [
+            { id: quantityOption.id },
+          ],
+          variants: [
+            {
+              title: "1kg",
+              sku: "RICE-BROWN-1KG",
+              options: {
+                Quantity: "1kg",
+              },
+              prices: [
+                {
+                  amount: 199,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "2kg",
+              sku: "RICE-BROWN-2KG",
+              options: {
+                Quantity: "2kg",
+              },
+              prices: [
+                {
+                  amount: 380,
+                  currency_code: "inr",
+                },
+              ],
+            },
+            {
+              title: "5kg",
+              sku: "RICE-BROWN-5KG",
+              options: {
+                Quantity: "5kg",
+              },
+              prices: [
+                {
+                  amount: 899,
+                  currency_code: "inr",
                 },
               ],
             },
