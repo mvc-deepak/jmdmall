@@ -3,14 +3,33 @@ import { LOGIN_VIEW } from "@modules/account/templates/login-template"
 import ErrorMessage from "@modules/checkout/components/error-message"
 import { SubmitButton } from "@modules/checkout/components/submit-button"
 import Input from "@modules/common/components/input"
-import { useActionState } from "react"
+import { useActionState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 
 type Props = {
   setCurrentView: (view: LOGIN_VIEW) => void
+  countryCode?: string
 }
 
-const Login = ({ setCurrentView }: Props) => {
-  const [message, formAction] = useActionState(login, null)
+const Login = ({ setCurrentView, countryCode }: Props) => {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnTo = searchParams.get("returnTo") || `/${countryCode}/account`
+
+  const loginAction = async (state: unknown, formData: FormData) => {
+    if (countryCode) {
+      formData.set("countryCode", countryCode)
+    }
+    return login(state, formData)
+  }
+
+  const [message, formAction] = useActionState(loginAction, null)
+
+  useEffect(() => {
+    if (message?.state === "success") {
+      router.push(returnTo)
+    }
+  }, [message, returnTo, router])
 
   return (
     <div

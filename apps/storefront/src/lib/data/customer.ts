@@ -19,6 +19,44 @@ import {
   setPendingCustomer,
 } from "./cookies"
 
+function getFormDataValue(formData: FormData, key: string): string {
+  const direct = formData.get(key)
+  const prefixed = formData.get(`_1_${key}`)
+  const value = direct ?? prefixed
+  return typeof value === "string" ? value : ""
+}
+
+function debugFormData(formData: FormData) {
+  if (process.env.NODE_ENV !== "production") {
+    const entries = Array.from(formData.entries()).map(([key, value]) => {
+      if (key.toLowerCase().includes("password")) {
+        return [key, value ? "[REDACTED]" : value]
+      }
+      return [key, value]
+    })
+    console.debug("customer formData:", entries)
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  const err = error as {
+    response?: {
+      data?: { message?: string } | string
+    }
+    message?: string
+  }
+
+  if (err?.response) {
+    const data = err.response.data
+    if (typeof data === "object" && data !== null) {
+      return String(data.message || JSON.stringify(data))
+    }
+    return String(data ?? err.message ?? "Unauthorized")
+  }
+
+  return String(err?.message ?? error ?? "Unauthorized")
+}
+
 export type CustomerAuthState =
   | { state: "error"; error: string }
   | { state: "verification_required"; email: string }
@@ -44,7 +82,7 @@ export const retrieveCustomer =
   async (): Promise<HttpTypes.StoreCustomer | null> => {
     const authHeaders = await getAuthHeaders()
 
-    if (!authHeaders) return null
+    if (!authHeaders || Object.keys(authHeaders).length === 0) return null
 
     const headers = {
       ...authHeaders,
@@ -88,12 +126,18 @@ export async function signup(
   _currentState: unknown,
   formData: FormData
 ): Promise<CustomerAuthState> {
-  const password = formData.get("password") as string
+  debugFormData(formData)
+
+  const password = getFormDataValue(formData, "password")
   const customerForm = {
-    email: formData.get("email") as string,
-    first_name: formData.get("first_name") as string,
-    last_name: formData.get("last_name") as string,
-    phone: formData.get("phone") as string,
+    email: getFormDataValue(formData, "email"),
+    first_name: getFormDataValue(formData, "first_name"),
+    last_name: getFormDataValue(formData, "last_name"),
+    phone: getFormDataValue(formData, "phone"),
+  }
+
+  if (!customerForm.email || !password) {
+    return { state: "error", error: "Email and password are required." }
   }
 
   try {
@@ -110,7 +154,7 @@ export async function signup(
       fetchError.statusText !== "Unauthorized" ||
       fetchError.message !== "Identity with email already exists"
     ) {
-      return { state: "error", error: String(error) }
+      return { state: "error", error: getErrorMessage(error) }
     }
   }
 
@@ -128,10 +172,18 @@ export async function login(
   _currentState: unknown,
   formData: FormData
 ): Promise<CustomerAuthState> {
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
+  const email = getFormDataValue(formData, "email")
+  const password = getFormDataValue(formData, "password")
+  const countryCode = getFormDataValue(formData, "countryCode") || process.env.NEXT_PUBLIC_DEFAULT_REGION || "in"
 
-  return completeLogin(email, password)
+  const result = await completeLogin(email, password)
+
+  if (result?.state === "success") {
+    // Return success state and let client redirect
+    return { state: "success" }
+  }
+
+  return result
 }
 
 // Logs the customer in and reconciles the customer record. The behavior is
@@ -146,7 +198,7 @@ async function completeLogin(
   try {
     result = await sdk.auth.login("customer", "emailpass", { email, password })
   } catch (error) {
-    return { state: "error", error: String(error) }
+    return { state: "error", error: getErrorMessage(error) }
   }
 
   // A `location` is returned by third-party auth providers, which this flow
@@ -212,7 +264,7 @@ async function completeLogin(
         password,
       })) as string
     } catch (error) {
-      return { state: "error", error: String(error) }
+      return { state: "error", error: getErrorMessage(error) }
     }
 
     await removePendingCustomer()
