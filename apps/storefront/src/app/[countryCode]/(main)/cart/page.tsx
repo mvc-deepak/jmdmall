@@ -1,15 +1,21 @@
-import type { Metadata } from "next"
-import LocalCartItems from "@modules/cart/components/local-cart-items"
+import { retrieveCart } from "@lib/data/cart"
+import { retrieveCustomer } from "@lib/data/customer"
+import CartTemplate from "@modules/cart/templates"
+import { Metadata } from "next"
+import { notFound } from "next/navigation"
 
 export const metadata: Metadata = {
   title: "Cart",
-  description: "Your shopping cart",
+  description: "View your cart",
 }
 
-export default async function CartPage() {
-  return (
-    <div className="content-container py-8">
-      <LocalCartItems />
-    </div>
-  )
+export default async function Cart() {
+  const cart = await retrieveCart().catch((error) => {
+    console.error(error)
+    return notFound()
+  })
+
+  const customer = await retrieveCustomer()
+
+  return <CartTemplate cart={cart} customer={customer} />
 }

@@ -14,18 +14,7 @@ type VariantWithPrice = HttpTypes.StoreProductVariant & {
 }
 
 export const getPricesForVariant = (variant: VariantWithPrice) => {
-  if (!variant) {
-    console.log("getPricesForVariant called with undefined variant")
-    return null
-  }
-
-  console.log("getPricesForVariant called with variant:", {
-    sku: variant.sku,
-    calculated_price: variant.calculated_price,
-  })
-
   if (!variant?.calculated_price?.calculated_amount) {
-    console.log("No calculated_price.calculated_amount for variant:", variant.sku)
     return null
   }
 
@@ -65,21 +54,14 @@ export function getProductPrice({
       return null
     }
 
-    const variantsWithPrice = (product.variants as VariantWithPrice[]).filter(
-      (v) => !!v.calculated_price
-    )
-
-    if (variantsWithPrice.length === 0) {
-      console.log(`No variants with prices for product: ${product.title}`)
-      return null
-    }
-
-    const cheapestVariant = variantsWithPrice.sort((a, b) => {
-      return (
-        (a.calculated_price?.calculated_amount ?? 0) -
-        (b.calculated_price?.calculated_amount ?? 0)
-      )
-    })[0]
+    const cheapestVariant = (product.variants as VariantWithPrice[])
+      .filter((v) => !!v.calculated_price)
+      .sort((a, b) => {
+        return (
+          (a.calculated_price?.calculated_amount ?? 0) -
+          (b.calculated_price?.calculated_amount ?? 0)
+        )
+      })[0]
 
     return getPricesForVariant(cheapestVariant)
   }

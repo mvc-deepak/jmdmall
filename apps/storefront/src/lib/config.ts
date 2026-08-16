@@ -20,26 +20,20 @@ sdk.client.fetch = async <T>(
   input: FetchInput,
   init?: FetchArgs
 ): Promise<T> => {
-  const headers = new Headers(init?.headers ?? {})
-
+  const headers = init?.headers ?? {}
+  let localeHeader: Record<string, string | null> | undefined
   try {
-    const localeHeader = await getLocaleHeader()
-    const locale = localeHeader?.["x-medusa-locale"]
-
-    if (locale && !headers.has("x-medusa-locale")) {
-      headers.set("x-medusa-locale", locale)
-    }
+    localeHeader = await getLocaleHeader()
+    headers["x-medusa-locale"] ??= localeHeader["x-medusa-locale"]
   } catch {}
 
-  const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
-  if (publishableKey && !headers.has("x-publishable-api-key")) {
-    headers.set("x-publishable-api-key", publishableKey)
+  const newHeaders = {
+    ...localeHeader,
+    ...headers,
   }
-
   init = {
     ...init,
-    headers,
+    headers: newHeaders,
   }
-
   return originalFetch(input, init)
 }
