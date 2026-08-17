@@ -1,0 +1,251 @@
+"""Passively capture Blinkit product JSON while you browse normally.
+
+How it works
+------------
+1. You launch Chrome ONCE with remote debugging enabled (see below).
+2. You run this script. It CONNECTS to that same Chrome (it does not open a
+   new controlled browser), so you stay logged in and browse as usual.
+3. As you open Blinkit product pages, the browser fetches:
+        https://blinkit.com/v1/layout/product/<id>...
+   This script listens for those responses and saves each one as
+        blinkit_import/to_import/<productId>.json
+   which is exactly what import_blinkit_folder.py consumes.
+4. Press Ctrl+C to stop. Then run:  python import_blinkit_folder.py
+
+--------------------------------------------------------------------------
+STEP 1 - Start Chrome with remote debugging (do this first, once)
+--------------------------------------------------------------------------
+Close all Chrome windows first, then run ONE of these:
+
+  Windows (PowerShell / cmd):
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" ^
+        --remote-debugging-port=9222 ^
+        --user-data-dir="C:\\chrome-blinkit-profile"
+
+Using a separate --user-data-dir keeps this browsing profile isolated and is
+the most reliable way to attach. Log into Blinkit in that window.
+
+--------------------------------------------------------------------------
+STEP 2 - Run this script
+--------------------------------------------------------------------------
+    python capture_blinkit_products.py
+
+Then browse Blinkit product pages. Each product you open is saved.
+"""
+
+import json
+import os
+import re
+import sys
+from datetime import datetime
+
+from playwright.sync_api import sync_playwright
+
+
+# --------------------------------------------------------------------------- #
+# Configuration
+# --------------------------------------------------------------------------- #
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TO_IMPORT_DIR = os.path.join(SCRIPT_DIR, "blinkit_import", "to_import")
+
+CDP_URL = "http://localhost:9222"
+TARGET_PREFIX = "https://blinkit.com/v1/layout/product/"
+
+# Pull the product id out of the URL, e.g.
+#   https://blinkit.com/v1/layout/product/710806?...  -> 710806
+PRODUCT_ID_RE = re.compile(r"/v1/layout/product/(\d+)")
+
+
+# --------------------------------------------------------------------------- #
+# Console helpers
+# --------------------------------------------------------------------------- #
+
+class C:
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+
+
+def _supports_color():
+    if os.environ.get("NO_COLOR"):
+        return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+            return True
+        except Exception:
+            return False
+    return sys.stdout.isatty()
+
+
+_COLOR = _supports_color()
+
+
+def paint(text, color):
+    return f"{color}{text}{C.RESET}" if _COLOR else text
+
+
+def hr(char="-", width=64):
+    print(paint(char * width, C.DIM))
+
+
+def now_stamp():
+    return datetime.now().strftime("%H:%M:%S")
+
+
+# --------------------------------------------------------------------------- #
+# Capture
+# --------------------------------------------------------------------------- #
+
+def extract_product_id(url):
+    match = PRODUCT_ID_RE.search(url)
+    return match.group(1) if match else None
+
+
+def save_response(product_id, text):
+    """Save raw JSON text to <productId>.json. Overwrites so the newest
+    capture wins (fresh price/stock). Returns the file path."""
+    os.makedirs(TO_IMPORT_DIR, exist_ok=True)
+    dest = os.path.join(TO_IMPORT_DIR, f"{product_id}.json")
+    with open(dest, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return dest
+
+
+def make_handler(seen):
+    def handle_response(response):
+        url = response.url
+        if not url.startswith(TARGET_PREFIX):
+            return
+
+        product_id = extract_product_id(url) or "unknown"
+
+        try:
+            text = response.text()
+        except Exception as exc:
+            print(
+                paint(
+                    f"  [{now_stamp()}] {product_id}: could not read body ({exc})",
+                    C.RED,
+                )
+            )
+            return
+
+        # Sanity check: make sure it's actually JSON before saving.
+        try:
+            json.loads(text)
+        except Exception:
+            print(
+                paint(
+                    f"  [{now_stamp()}] {product_id}: response was not valid JSON, skipped",
+                    C.YELLOW,
+                )
+            )
+            return
+
+        dest = save_response(product_id, text)
+        seen.add(product_id)
+        rel = os.path.relpath(dest, SCRIPT_DIR)
+        print(
+            f"  [{now_stamp()}] "
+            + paint("captured", C.GREEN)
+            + f" product {paint(product_id, C.BOLD)} "
+            + paint(f"-> {rel}", C.DIM)
+            + f"  (total {len(seen)})"
+        )
+
+    return handle_response
+
+
+def attach_to_pages(context, handler):
+    """Attach the response listener to all current and future pages/tabs."""
+    for page in context.pages:
+        page.on("response", handler)
+    context.on("page", lambda page: page.on("response", handler))
+
+
+def main():
+    hr("=")
+    print(paint("  Blinkit product capture (passive, via your Chrome)", C.BOLD + C.CYAN))
+    hr("=")
+    print(f"  Watching : {paint(TARGET_PREFIX + '*', C.CYAN)}")
+    print(f"  Saving to: {paint(os.path.relpath(TO_IMPORT_DIR, SCRIPT_DIR), C.CYAN)}")
+    print(f"  Chrome   : {paint(CDP_URL, C.CYAN)}")
+    hr()
+
+    seen = set()
+
+    with sync_playwright() as pw:
+        try:
+            browser = pw.chromium.connect_over_cdp(CDP_URL)
+        except Exception as exc:
+            print(paint(f"  Could not connect to Chrome at {CDP_URL}.", C.RED))
+            print(paint(f"  {exc}", C.RED))
+            print()
+            print("  Start Chrome with remote debugging FIRST, e.g.:")
+            print(
+                paint(
+                    '    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" '
+                    '--remote-debugging-port=9222 '
+                    '--user-data-dir="C:\\chrome-blinkit-profile"',
+                    C.DIM,
+                )
+            )
+            sys.exit(1)
+
+        handler = make_handler(seen)
+
+        contexts = browser.contexts
+        if not contexts:
+            print(paint("  Connected, but no browser context/tab found.", C.YELLOW))
+            print("  Open a tab in that Chrome window and try again.")
+            sys.exit(1)
+
+        for context in contexts:
+            attach_to_pages(context, handler)
+
+        print(paint("  Connected. Now browse Blinkit product pages normally.", C.GREEN))
+        print(paint("  Each product page you open will be saved automatically.", C.GREEN))
+        print(paint("  Press Ctrl+C here when you're done.", C.YELLOW))
+        hr()
+
+        # Keep the process alive while the browser stays open. Playwright's
+        # event loop delivers response events on its own thread; we just wait.
+        try:
+            page = contexts[0].pages[0] if contexts[0].pages else contexts[0].new_page()
+            while True:
+                # wait_for_event with a long timeout is a clean idle wait that
+                # still lets Ctrl+C through.
+                try:
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    # Page/tab may have been closed by the user; re-resolve.
+                    live = [p for ctx in browser.contexts for p in ctx.pages]
+                    if not live:
+                        print(paint("\n  All tabs closed. Stopping.", C.YELLOW))
+                        break
+                    page = live[0]
+        except KeyboardInterrupt:
+            pass
+
+        hr("=")
+        print(
+            f"  Stopped. Captured {paint(str(len(seen)), C.BOLD + C.GREEN)} "
+            f"product file(s) into "
+            f"{paint(os.path.relpath(TO_IMPORT_DIR, SCRIPT_DIR), C.CYAN)}"
+        )
+        if seen:
+            print("  Next step:  " + paint("python import_blinkit_folder.py", C.BOLD))
+        hr("=")
+
+
+if __name__ == "__main__":
+    main()

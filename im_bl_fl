@@ -1,0 +1,453 @@
+"""Bulk / folder-based product importer for Blinkit JSON files.
+
+This is a thin wrapper around the tested logic in import_blinkit_json.py.
+It reuses that file's extract_product() and import_product() directly, so the
+extraction/DB logic stays in ONE place. This script only adds:
+
+  - a 3-folder workflow (+ logs)
+  - automatic folder creation
+  - clean console progress
+  - success/error CSV audit logs
+  - moving each file to completed/ or error/
+
+Folder tree (created automatically next to this script if missing):
+
+    blinkit_import/
+    ├── to_import/    <- drop saved Blinkit .json / .txt files here
+    ├── completed/    <- files that imported successfully
+    ├── error/        <- files that failed (never lost)
+    └── logs/
+        ├── import_success.csv
+        └── import_errors.csv
+
+Usage:
+    python import_blinkit_folder.py
+
+    1. Put Blinkit JSON files into blinkit_import/to_import/
+    2. Run the command above.
+    3. Success -> file moved to completed/, row added to import_success.csv
+       Failure -> file moved to error/,     row added to import_errors.csv
+"""
+
+import csv
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import time
+import traceback
+from datetime import datetime
+
+# Reuse the tested Blinkit logic (single source of truth).
+import import_blinkit_json as blinkit
+
+
+# --------------------------------------------------------------------------- #
+# Configuration
+# --------------------------------------------------------------------------- #
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(SCRIPT_DIR, "jmdmall.db")
+
+SOURCE_VENDOR = "Blinkit"
+
+BASE_DIR = os.path.join(SCRIPT_DIR, "blinkit_import")
+TO_IMPORT_DIR = os.path.join(BASE_DIR, "to_import")
+COMPLETED_DIR = os.path.join(BASE_DIR, "completed")
+ERROR_DIR = os.path.join(BASE_DIR, "error")
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+
+SUCCESS_LOG = os.path.join(LOGS_DIR, "import_success.csv")
+ERROR_LOG = os.path.join(LOGS_DIR, "import_errors.csv")
+
+VALID_EXTENSIONS = (".json", ".txt")
+
+SUCCESS_COLUMNS = [
+    "timestamp",
+    "file_name",
+    "product_id",
+    "product_name",
+    "category_id",
+    "images_count",
+    "attributes_count",
+    "variants_count",
+    "offers_count",
+    "destination_path",
+]
+
+ERROR_COLUMNS = [
+    "timestamp",
+    "file_name",
+    "file_path",
+    "error_type",
+    "error_message",
+    "product_id",
+    "source_vendor",
+    "stage",
+]
+
+
+# --------------------------------------------------------------------------- #
+# Console helpers (no external deps, works in plain terminals)
+# --------------------------------------------------------------------------- #
+
+class C:
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+
+
+def _supports_color():
+    if os.environ.get("NO_COLOR"):
+        return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+            return True
+        except Exception:
+            return False
+    return sys.stdout.isatty()
+
+
+_COLOR = _supports_color()
+
+
+def paint(text, color):
+    return f"{color}{text}{C.RESET}" if _COLOR else text
+
+
+def hr(char="-", width=64):
+    print(paint(char * width, C.DIM))
+
+
+def banner(title):
+    hr("=")
+    print(paint(f"  {title}", C.BOLD + C.CYAN))
+    hr("=")
+
+
+# --------------------------------------------------------------------------- #
+# Per-product Blinkit URL (the base script hardcodes a single URL)
+# --------------------------------------------------------------------------- #
+
+def build_source_url(product):
+    """Derive the real Blinkit product URL from slug + source_product_id.
+
+    Blinkit product URLs follow: blinkit.com/prn/<slug>/prid/<id>
+    The base import_blinkit_json.py stamps every product with one hardcoded
+    URL, which is wrong for bulk import. We fix it here per product.
+    """
+    pid = product.get("source_product_id")
+    if not pid:
+        return product.get("source_url")
+    slug = product.get("product_slug") or "product"
+    return f"https://blinkit.com/prn/{slug}/prid/{pid}"
+
+
+# --------------------------------------------------------------------------- #
+# Folder / logging plumbing
+# --------------------------------------------------------------------------- #
+
+def ensure_folders():
+    created = []
+    for path in (TO_IMPORT_DIR, COMPLETED_DIR, ERROR_DIR, LOGS_DIR):
+        if not os.path.isdir(path):
+            os.makedirs(path, exist_ok=True)
+            created.append(path)
+    return created
+
+
+def ensure_log_headers():
+    if not os.path.exists(SUCCESS_LOG):
+        with open(SUCCESS_LOG, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(SUCCESS_COLUMNS)
+    if not os.path.exists(ERROR_LOG):
+        with open(ERROR_LOG, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(ERROR_COLUMNS)
+
+
+def log_success(row):
+    with open(SUCCESS_LOG, "a", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerow([row.get(c, "") for c in SUCCESS_COLUMNS])
+
+
+def log_error(row):
+    with open(ERROR_LOG, "a", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerow([row.get(c, "") for c in ERROR_COLUMNS])
+
+
+def now_stamp():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def unique_destination(directory, file_name):
+    """Avoid clobbering an existing file of the same name in the target dir."""
+    dest = os.path.join(directory, file_name)
+    if not os.path.exists(dest):
+        return dest
+    stem, ext = os.path.splitext(file_name)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return os.path.join(directory, f"{stem}__{stamp}{ext}")
+
+
+def move_file(src, directory, overwrite=False):
+    """Move src into directory.
+
+    overwrite=True  -> replace any same-named file (used for completed/, since
+                       re-importing is an upsert; one file per product is clean).
+    overwrite=False -> keep both by adding a timestamp suffix (used for error/,
+                       so distinct failures are never silently lost).
+    """
+    if overwrite:
+        dest = os.path.join(directory, os.path.basename(src))
+        if os.path.exists(dest):
+            os.remove(dest)
+    else:
+        dest = unique_destination(directory, os.path.basename(src))
+    shutil.move(src, dest)
+    return dest
+
+
+# --------------------------------------------------------------------------- #
+# Per-file processing
+# --------------------------------------------------------------------------- #
+
+def process_file(file_path):
+    """Return (status, info). status is 'success' or 'error'.
+
+    Stages tracked for the error log:
+      read_file -> parse_json -> extract_product -> db_import -> move_file
+    """
+    file_name = os.path.basename(file_path)
+    stage = "read_file"
+    product_id = ""
+
+    try:
+        with open(file_path, encoding="utf-8") as fh:
+            raw = fh.read()
+
+        stage = "parse_json"
+        payload = json.loads(raw)
+
+        stage = "extract_product"
+        product = blinkit.extract_product(payload)
+        product_id = product.get("product_id", "")
+
+        # Validate the essentials before touching the DB.
+        if not product.get("source_product_id"):
+            raise ValueError(
+                "Could not find a Blinkit product_id in this JSON "
+                "(missing product_atc_strip snippet?)."
+            )
+        if not product.get("name"):
+            raise ValueError("Product name could not be extracted from this JSON.")
+
+        # Fix per-product URL (base script hardcodes a single URL).
+        real_url = build_source_url(product)
+        product["source_url"] = real_url
+        if isinstance(product.get("offer"), dict):
+            product["offer"]["source_url"] = real_url
+
+        stage = "db_import"
+        summary = blinkit.import_product(DB_PATH, product)
+        product_id = summary["product_id"]
+
+        if summary.get("foreign_key_errors"):
+            raise RuntimeError(
+                f"Foreign key check failed: {summary['foreign_key_errors']}"
+            )
+
+        stage = "move_file"
+        dest = move_file(file_path, COMPLETED_DIR, overwrite=True)
+
+        summary["product_name"] = product.get("name")
+        log_success(
+            {
+                "timestamp": now_stamp(),
+                "file_name": file_name,
+                "product_id": summary["product_id"],
+                "product_name": product.get("name"),
+                "category_id": summary["category_id"],
+                "images_count": summary["images"],
+                "attributes_count": summary["attributes"],
+                "variants_count": summary["variants"],
+                "offers_count": summary["offers"],
+                "destination_path": dest,
+            }
+        )
+        return "success", summary
+
+    except Exception as exc:
+        error_type = type(exc).__name__
+        error_message = str(exc).replace("\n", " ").strip()
+
+        moved_to = ""
+        try:
+            if os.path.exists(file_path):
+                moved_to = move_file(file_path, ERROR_DIR)
+        except Exception as move_exc:  # pragma: no cover - filesystem edge
+            error_message += f" | (also failed to move file: {move_exc})"
+
+        log_error(
+            {
+                "timestamp": now_stamp(),
+                "file_name": file_name,
+                "file_path": moved_to or file_path,
+                "error_type": error_type,
+                "error_message": error_message,
+                "product_id": product_id,
+                "source_vendor": SOURCE_VENDOR,
+                "stage": stage,
+            }
+        )
+        return "error", {
+            "error_type": error_type,
+            "error_message": error_message,
+            "stage": stage,
+            "traceback": traceback.format_exc(),
+        }
+
+
+# --------------------------------------------------------------------------- #
+# Main
+# --------------------------------------------------------------------------- #
+
+def wait_for_db_unlock(db_path, max_wait=30):
+    """If jmdmall.db is locked by another program (e.g. a DB viewer), wait
+    until it frees up. Returns True if writable, False if still locked."""
+    if not os.path.exists(db_path):
+        return True  # missing DB is handled/reported elsewhere
+    deadline = time.time() + max_wait
+    warned = False
+    while True:
+        try:
+            conn = sqlite3.connect(db_path, timeout=1)
+            conn.execute("BEGIN IMMEDIATE;")
+            conn.rollback()
+            conn.close()
+            return True
+        except sqlite3.OperationalError:
+            if time.time() >= deadline:
+                return False
+            if not warned:
+                print(
+                    paint(
+                        "  Database is locked by another program "
+                        "(a DB viewer/IDE with jmdmall.db open?).",
+                        C.YELLOW,
+                    )
+                )
+                print(
+                    paint(
+                        f"  Waiting up to {max_wait}s for it to be released...",
+                        C.YELLOW,
+                    )
+                )
+                warned = True
+            time.sleep(1)
+
+
+def list_input_files():
+    return [
+        os.path.join(TO_IMPORT_DIR, name)
+        for name in sorted(os.listdir(TO_IMPORT_DIR))
+        if name.lower().endswith(VALID_EXTENSIONS)
+    ]
+
+
+def main():
+    banner(f"{SOURCE_VENDOR} bulk folder importer")
+
+    created = ensure_folders()
+    ensure_log_headers()
+
+    print(f"  Base folder : {paint(BASE_DIR, C.CYAN)}")
+    print(f"  Database    : {paint(DB_PATH, C.CYAN)}")
+    if created:
+        print(paint("  Created missing folders:", C.YELLOW))
+        for path in created:
+            print(f"    + {os.path.relpath(path, SCRIPT_DIR)}")
+    if not os.path.exists(DB_PATH):
+        print(paint(f"  WARNING: database not found at {DB_PATH}", C.RED))
+
+    files = list_input_files()
+    total = len(files)
+    hr()
+
+    if total == 0:
+        print(paint("  Nothing to import.", C.YELLOW))
+        print(
+            f"  Drop {' / '.join(VALID_EXTENSIONS)} files into: "
+            f"{paint(os.path.relpath(TO_IMPORT_DIR, SCRIPT_DIR), C.CYAN)}"
+        )
+        hr()
+        return
+
+    print(f"  Found {paint(str(total), C.BOLD)} file(s) to import.")
+
+    if not wait_for_db_unlock(DB_PATH):
+        print(
+            paint(
+                "  Aborting: database is still locked. Close the program "
+                "using jmdmall.db and run again.",
+                C.RED,
+            )
+        )
+        hr("=")
+        sys.exit(1)
+    hr()
+
+    ok = 0
+    failed = 0
+
+    for idx, file_path in enumerate(files, start=1):
+        file_name = os.path.basename(file_path)
+        prefix = paint(f"[{idx}/{total}]", C.DIM)
+        print(f"{prefix} {file_name} ", end="", flush=True)
+
+        status, info = process_file(file_path)
+
+        if status == "success":
+            ok += 1
+            print(paint("OK", C.GREEN))
+            print(
+                f"         -> {info.get('product_name') or info['product_id']}  "
+                f"({paint('img', C.DIM)} {info['images']}, "
+                f"{paint('attr', C.DIM)} {info['attributes']}, "
+                f"{paint('var', C.DIM)} {info['variants']}, "
+                f"{paint('offer', C.DIM)} {info['offers']}) "
+                f"{paint('-> completed/', C.DIM)}"
+            )
+        else:
+            failed += 1
+            print(paint("FAILED", C.RED))
+            print(
+                f"         {paint(info['error_type'], C.RED)} at "
+                f"{paint(info['stage'], C.YELLOW)}: {info['error_message']}"
+            )
+            print(paint("         -> error/ (see logs/import_errors.csv)", C.DIM))
+
+    hr("=")
+    print(
+        f"  Done. {paint(str(ok) + ' succeeded', C.GREEN)}, "
+        f"{paint(str(failed) + ' failed', C.RED if failed else C.DIM)}, "
+        f"{total} total."
+    )
+    print(f"  Success log : {paint(os.path.relpath(SUCCESS_LOG, SCRIPT_DIR), C.CYAN)}")
+    print(f"  Error log   : {paint(os.path.relpath(ERROR_LOG, SCRIPT_DIR), C.CYAN)}")
+    hr("=")
+
+    if failed:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,494 @@
+import json
+import os
+import re
+import sqlite3
+import sys
+
+
+DB_PATH = "jmdmall.db"
+DEFAULT_JSON_PATH = (
+    r"C:\Users\KGDEEPAK\.codex\attachments"
+    r"\3e29c58b-2fcf-4c22-ade7-675917b0638e\pasted-text.txt"
+)
+SOURCE_VENDOR = "Blinkit"
+SOURCE_URL = "https://blinkit.com/prn/aashirvaad-high-fibre-multigrain-atta/prid/710806"
+
+
+def clean_slug(text):
+    if not text:
+        return ""
+    text = text.lower().strip()
+    text = text.replace("&", "and")
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[\s_-]+", "-", text).strip("-")
+
+
+def parse_money(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.search(r"(\d+(?:\.\d+)?)", str(value).replace(",", ""))
+    return float(match.group(1)) if match else None
+
+
+def parse_discount(value, price=None, mrp=None):
+    if value:
+        match = re.search(r"(\d+(?:\.\d+)?)", str(value))
+        if match:
+            return float(match.group(1))
+    if price is not None and mrp:
+        return round(((mrp - price) / mrp) * 100, 2)
+    return None
+
+
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+
+def text_at(data, *keys):
+    current = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def find_snippet(snippets, widget_type):
+    for snippet in snippets:
+        if snippet.get("widget_type") == widget_type:
+            return snippet
+    return None
+
+
+def collect_details(response):
+    details = {}
+
+    def add_from_snippet(snippet):
+        data = snippet.get("data", {})
+        identity = data.get("identity", {})
+        if not isinstance(identity, dict):
+            return
+        if not str(identity.get("id", "")).startswith("product_details"):
+            return
+        title = text_at(data, "title", "text")
+        subtitle = text_at(data, "subtitle", "text")
+        if title:
+            details[title.strip()] = subtitle
+
+    for snippet in response.get("snippets", []):
+        add_from_snippet(snippet)
+
+    updater_data = response.get("snippet_list_updater_data", {})
+    expanded = (
+        updater_data.get("expand_attributes", {})
+        .get("payload", {})
+        .get("snippets_to_add", [])
+    )
+    for snippet in expanded:
+        add_from_snippet(snippet)
+
+    return details
+
+
+def collect_gallery(carousel_snippet):
+    if not carousel_snippet:
+        return []
+
+    urls = []
+    for node in walk(carousel_snippet):
+        image_url = node.get("image_url")
+        if image_url and image_url not in urls:
+            urls.append(image_url)
+        image = node.get("image")
+        if isinstance(image, dict):
+            url = image.get("url")
+            if url and url not in urls:
+                urls.append(url)
+    return urls
+
+
+def collect_breadcrumbs(breadcrumb_snippet):
+    if not breadcrumb_snippet:
+        return []
+    items = breadcrumb_snippet.get("data", {}).get("horizontal_item_list", [])
+    return [
+        text_at(item, "title", "text")
+        for item in items
+        if text_at(item, "title", "text")
+    ]
+
+
+def collect_variants(variant_snippet, default_source_product_id):
+    if not variant_snippet:
+        return []
+
+    variants = []
+    items = variant_snippet.get("data", {}).get("horizontal_item_list", [])
+    for item in items:
+        data = item.get("data", {})
+        source_product_id = data.get("product_id")
+        price = parse_money(text_at(data, "subtitle", "text"))
+        mrp = parse_money(text_at(data, "subtitle2", "text"))
+        offer_text = text_at(item, "tag_data", "title", "text")
+        # Scope variant_id to the PARENT product. The same underlying variant
+        # (source_product_id) can be listed under multiple parent products, so
+        # keying only on the variant id collides across products.
+        variants.append(
+            {
+                "variant_id": f"VAR-BLINKIT-{default_source_product_id}-{source_product_id}",
+                "source_product_id": str(source_product_id) if source_product_id else None,
+                "unit": text_at(data, "title", "text"),
+                "price": price,
+                "original_price": mrp,
+                "discount_percentage": parse_discount(offer_text, price, mrp),
+                "is_default": 1 if str(source_product_id) == str(default_source_product_id) else 0,
+                "raw_data": data,
+            }
+        )
+
+    # Blinkit's variant carousel often lists only *related* pack sizes, not the
+    # parent product itself, so no variant matches default_source_product_id and
+    # is_default stays 0 for all of them. The offer's stock/price is attached to
+    # the default variant, so fall back to the first variant when none matched.
+    if variants and not any(v["is_default"] for v in variants):
+        variants[0]["is_default"] = 1
+
+    return variants
+
+
+def find_cart_item(commerce_snippet, source_product_id):
+    for node in walk(commerce_snippet):
+        cart_item = node.get("cart_item")
+        if not isinstance(cart_item, dict):
+            continue
+        if str(cart_item.get("product_id")) == str(source_product_id):
+            return cart_item
+    return None
+
+
+def resolve_category_id(cursor, breadcrumbs):
+    if len(breadcrumbs) >= 2:
+        path = "/".join(["groceries", clean_slug(breadcrumbs[0]), clean_slug(breadcrumbs[1])])
+        row = cursor.execute(
+            "SELECT category_id FROM categories WHERE path = ?;",
+            (path,),
+        ).fetchone()
+        if row:
+            return row[0]
+
+    fallback = cursor.execute(
+        "SELECT category_id FROM categories WHERE path = 'groceries';"
+    ).fetchone()
+    return fallback[0] if fallback else None
+
+
+def extract_product(payload):
+    response = payload["response"]
+    snippets = response.get("snippets", [])
+
+    commerce_snippet = find_snippet(snippets, "product_atc_strip")
+    carousel_snippet = find_snippet(snippets, "carousal_list_vr")
+    breadcrumb_snippet = find_snippet(snippets, "horizontal_text_list_snippet")
+    variant_snippet = find_snippet(snippets, "horizontal_list")
+    title_snippet = find_snippet(snippets, "text_right_icons_rating_snippet_type")
+
+    commerce_data = commerce_snippet.get("data", {}) if commerce_snippet else {}
+    source_product_id = commerce_data.get("product_id") or text_at(commerce_data, "identity", "id")
+    cart_item = find_cart_item(commerce_snippet, source_product_id) or {}
+
+    details = collect_details(response)
+    gallery = collect_gallery(carousel_snippet)
+    breadcrumbs = collect_breadcrumbs(breadcrumb_snippet)
+
+    name = (
+        cart_item.get("product_name")
+        or cart_item.get("display_name")
+        or text_at(title_snippet or {}, "data", "title", "text")
+    )
+    price = parse_money(cart_item.get("price") or text_at(commerce_data, "normal_price", "text"))
+    mrp = parse_money(cart_item.get("mrp") or text_at(commerce_data, "mrp", "text"))
+    offer_text = text_at(commerce_data, "offer_tag", "title", "text")
+
+    return {
+        "product_id": f"PROD-BLINKIT-{source_product_id}",
+        "product_code": f"BLINKIT-{source_product_id}",
+        "name": name,
+        # Suffix the source id so slugs stay unique: different Blinkit products
+        # (e.g. pack sizes) can share the exact same name, but product_slug has
+        # a UNIQUE constraint. Deterministic -> re-import upsert still matches.
+        "product_slug": f"{clean_slug(name)}-{source_product_id}",
+        "brand": cart_item.get("brand"),
+        "manufacturer": details.get("Manufacturer's Name and Address"),
+        "short_description": details.get("Key Features"),
+        "long_description": details.get("Description"),
+        "thumbnail_image": cart_item.get("image_url") or (gallery[0] if gallery else None),
+        "metadata_tags": ", ".join([value for value in breadcrumbs if value]),
+        "metadata_seo_keywords": ", ".join(
+            value for value in [name, cart_item.get("brand"), *breadcrumbs] if value
+        ),
+        "source_product_id": str(source_product_id),
+        "source_url": SOURCE_URL,
+        "country_of_origin": details.get("Country of Origin") or details.get("Source"),
+        "shelf_life": details.get("Shelf Life"),
+        "fssai_license": details.get("FSSAI License"),
+        "details": details,
+        "gallery": gallery,
+        "breadcrumbs": breadcrumbs,
+        "offer": {
+            "sku": f"BLINKIT-{source_product_id}-{cart_item.get('merchant_id')}",
+            "source_product_id": str(source_product_id),
+            "source_merchant_id": str(cart_item.get("merchant_id")) if cart_item.get("merchant_id") else None,
+            "source_group_id": str(cart_item.get("group_id") or commerce_data.get("group_id")),
+            "source_url": SOURCE_URL,
+            "price": price,
+            "original_price": mrp,
+            "discount_percentage": parse_discount(offer_text, price, mrp),
+            "merchant_type": cart_item.get("merchant_type") or commerce_data.get("merchant_type"),
+            "unit": cart_item.get("unit") or text_at(commerce_data, "variant", "text"),
+            "stock_status": "IN_STOCK" if not commerce_data.get("is_sold_out") else "OUT_OF_STOCK",
+            "stock_quantity": cart_item.get("inventory") or commerce_data.get("inventory") or 0,
+            "max_order_quantity": text_at(commerce_data, "stepper_data_v2", "max_count"),
+            "raw_offer_data": commerce_data,
+        },
+        "variants": collect_variants(variant_snippet, source_product_id),
+    }
+
+
+def import_product(db_path, product):
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    cursor = conn.cursor()
+
+    category_id = resolve_category_id(cursor, product["breadcrumbs"])
+
+    cursor.execute(
+        """
+        INSERT INTO products (
+            product_id, product_code, name, product_slug, brand, manufacturer,
+            short_description, long_description, thumbnail_image, metadata_tags,
+            metadata_seo_keywords, primary_category_id, source_vendor,
+            source_product_id, source_url, country_of_origin, shelf_life, fssai_license
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(product_id) DO UPDATE SET
+            product_code = excluded.product_code,
+            name = excluded.name,
+            product_slug = excluded.product_slug,
+            brand = excluded.brand,
+            manufacturer = excluded.manufacturer,
+            short_description = excluded.short_description,
+            long_description = excluded.long_description,
+            thumbnail_image = excluded.thumbnail_image,
+            metadata_tags = excluded.metadata_tags,
+            metadata_seo_keywords = excluded.metadata_seo_keywords,
+            primary_category_id = excluded.primary_category_id,
+            source_vendor = excluded.source_vendor,
+            source_product_id = excluded.source_product_id,
+            source_url = excluded.source_url,
+            country_of_origin = excluded.country_of_origin,
+            shelf_life = excluded.shelf_life,
+            fssai_license = excluded.fssai_license,
+            updated_at = CURRENT_TIMESTAMP;
+        """,
+        (
+            product["product_id"],
+            product["product_code"],
+            product["name"],
+            product["product_slug"],
+            product["brand"],
+            product["manufacturer"],
+            product["short_description"],
+            product["long_description"],
+            product["thumbnail_image"],
+            product["metadata_tags"],
+            product["metadata_seo_keywords"],
+            category_id,
+            SOURCE_VENDOR,
+            product["source_product_id"],
+            product["source_url"],
+            product["country_of_origin"],
+            product["shelf_life"],
+            product["fssai_license"],
+        ),
+    )
+
+    cursor.execute("DELETE FROM product_categories WHERE product_id = ?;", (product["product_id"],))
+    cursor.execute("DELETE FROM product_images WHERE product_id = ?;", (product["product_id"],))
+    cursor.execute("DELETE FROM product_attributes WHERE product_id = ?;", (product["product_id"],))
+    cursor.execute("DELETE FROM product_variants WHERE product_id = ?;", (product["product_id"],))
+
+    if category_id:
+        cursor.execute(
+            """
+            INSERT INTO product_categories (product_id, category_id, is_primary)
+            VALUES (?, ?, 1);
+            """,
+            (product["product_id"], category_id),
+        )
+
+    for display_order, image_url in enumerate(product["gallery"], start=1):
+        cursor.execute(
+            """
+            INSERT INTO product_images (
+                product_id, image_url, alt_text, display_order, is_primary, source_vendor
+            )
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (
+                product["product_id"],
+                image_url,
+                product["name"],
+                display_order,
+                1 if display_order == 1 else 0,
+                SOURCE_VENDOR,
+            ),
+        )
+
+    for display_order, (name, value) in enumerate(product["details"].items(), start=1):
+        if not name or value is None:
+            continue
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO product_attributes (
+                product_id, attribute_group, attribute_name, attribute_value, display_order,
+                is_filterable
+            )
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (
+                product["product_id"],
+                "Blinkit Product Details",
+                name,
+                value,
+                display_order,
+                1 if name in {"Atta Type", "Diet Preference", "Shelf Life", "Country of Origin"} else 0,
+            ),
+        )
+
+    for variant in product["variants"]:
+        cursor.execute(
+            """
+            INSERT INTO product_variants (
+                variant_id, product_id, source_vendor, source_product_id, source_group_id,
+                unit, price, original_price, discount_percentage, stock_status,
+                stock_quantity, is_default, raw_data
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                variant["variant_id"],
+                product["product_id"],
+                SOURCE_VENDOR,
+                variant["source_product_id"],
+                product["offer"]["source_group_id"],
+                variant["unit"],
+                variant["price"],
+                variant["original_price"],
+                variant["discount_percentage"],
+                product["offer"]["stock_status"],
+                product["offer"]["stock_quantity"] if variant["is_default"] else 0,
+                variant["is_default"],
+                json.dumps(variant["raw_data"], ensure_ascii=False),
+            ),
+        )
+
+    offer = product["offer"]
+    cursor.execute(
+        """
+        INSERT INTO vendor_offers (
+            product_id, sku, source_vendor, source_product_id, source_merchant_id,
+            source_group_id, source_url, price, original_price, discount_percentage,
+            merchant_type, unit, max_order_quantity, stock_status, stock_quantity,
+            raw_offer_data
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(product_id, source_vendor) DO UPDATE SET
+            sku = excluded.sku,
+            source_product_id = excluded.source_product_id,
+            source_merchant_id = excluded.source_merchant_id,
+            source_group_id = excluded.source_group_id,
+            source_url = excluded.source_url,
+            price = excluded.price,
+            original_price = excluded.original_price,
+            discount_percentage = excluded.discount_percentage,
+            merchant_type = excluded.merchant_type,
+            unit = excluded.unit,
+            max_order_quantity = excluded.max_order_quantity,
+            stock_status = excluded.stock_status,
+            stock_quantity = excluded.stock_quantity,
+            raw_offer_data = excluded.raw_offer_data,
+            source_date = CURRENT_TIMESTAMP,
+            last_checked_at = CURRENT_TIMESTAMP;
+        """,
+        (
+            product["product_id"],
+            offer["sku"],
+            SOURCE_VENDOR,
+            offer["source_product_id"],
+            offer["source_merchant_id"],
+            offer["source_group_id"],
+            offer["source_url"],
+            offer["price"],
+            offer["original_price"],
+            offer["discount_percentage"],
+            offer["merchant_type"],
+            offer["unit"],
+            offer["max_order_quantity"],
+            offer["stock_status"],
+            offer["stock_quantity"],
+            json.dumps(offer["raw_offer_data"], ensure_ascii=False),
+        ),
+    )
+
+    conn.commit()
+    summary = {
+        "product_id": product["product_id"],
+        "category_id": category_id,
+        "images": cursor.execute(
+            "SELECT COUNT(*) FROM product_images WHERE product_id = ?;",
+            (product["product_id"],),
+        ).fetchone()[0],
+        "attributes": cursor.execute(
+            "SELECT COUNT(*) FROM product_attributes WHERE product_id = ?;",
+            (product["product_id"],),
+        ).fetchone()[0],
+        "variants": cursor.execute(
+            "SELECT COUNT(*) FROM product_variants WHERE product_id = ?;",
+            (product["product_id"],),
+        ).fetchone()[0],
+        "offers": cursor.execute(
+            "SELECT COUNT(*) FROM vendor_offers WHERE product_id = ?;",
+            (product["product_id"],),
+        ).fetchone()[0],
+        "foreign_key_errors": cursor.execute("PRAGMA foreign_key_check;").fetchall(),
+    }
+    conn.close()
+    return summary
+
+
+def main():
+    json_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_JSON_PATH
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"JSON file not found: {json_path}")
+
+    with open(json_path, encoding="utf-8") as file:
+        payload = json.load(file)
+
+    product = extract_product(payload)
+    summary = import_product(DB_PATH, product)
+
+    print("Blinkit JSON import complete.")
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+
+
+if __name__ == "__main__":
+    main()
